@@ -1,0 +1,124 @@
+name: Mifoboy autopost
+
+on:
+  schedule:
+    # Время в UTC: Баку = UTC + 4. Четыре ролика в день: 12:07, 16:07, 18:07, 20:07 по Баку.
+    # (Минута :07, а не :00: в начале часа у GitHub очередь и запуски опаздывают сильнее.)
+    # Запуск повторяется каждые 15 минут внутри слота: GitHub иногда теряет или задерживает запуски. Дубль в тот же слот пропускается (см. state.json, поле slot).
+    # Пока в config.json "autoPublish": false или не наступила "startDate", запуски по расписанию ничего не делают.
+    - cron: '7,22,37,52 8,12,14,16 * * *'
+  workflow_dispatch:
+    inputs:
+      dry_run:
+        description: 'Проверка: сделать видео, но НЕ публиковать'
+        type: boolean
+        default: true
+      topic:
+        description: 'Ручной выбор темы: id темы (например rice). Пусто = как обычно'
+        type: string
+        default: ''
+      only_youtube:
+        description: 'Только YouTube (Instagram пропустить)'
+        type: boolean
+        default: false
+      source:
+        description: 'cron = запуск от внешнего планировщика (правила расписания: слоты, дубли, автопубликация)'
+        type: string
+        default: ''
+
+permissions:
+  contents: write
+  pages: write
+  id-token: write
+
+concurrency:
+  group: autopost
+  cancel-in-progress: false
+
+jobs:
+  post:
+    runs-on: ubuntu-24.04
+    env:
+      TOPIC: ${{ inputs.topic }}
+      # Запуск от внешнего планировщика (cron-job.org) ведёт себя как запуск по расписанию
+      RUN_KIND: ${{ github.event_name == 'schedule' && 'schedule' || (inputs.source == 'cron' && 'schedule' || github.event_name) }}
+    timeout-minutes: 45
+    environment:
+      name: github-pages
+      url: ${{ steps.deploy.outputs.page_url }}
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          # Свежий main, а не коммит на момент постановки запуска в очередь: иначе запуск, ждавший очереди, не видит слот, уже занятый предыдущим, и публикует дубль
+          ref: ${{ github.event.repository.default_branch }}
+
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 22
+          package-manager-cache: false
+
+      - name: Установить зависимости
+        run: |
+          npm install --no-audit --no-fund
+          npx playwright install --with-deps chromium
+          command -v ffmpeg >/dev/null || (sudo apt-get update -qq && sudo apt-get install -y -qq ffmpeg)
+          pip install --quiet edge-tts || true
+          sudo apt-get install -y -qq espeak-ng || true
+          ffmpeg -version | head -n 1
+
+      - name: Сделать ролик
+        id: render
+        env:
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+        run: node scripts/render.mjs
+
+      - uses: actions/configure-pages@v6
+        if: steps.render.outputs.skip != 'true'
+
+      - uses: actions/upload-pages-artifact@v5
+        if: steps.render.outputs.skip != 'true'
+        with:
+          path: out/site
+
+      - name: Выложить видео по публичной ссылке (GitHub Pages)
+        id: deploy
+        if: steps.render.outputs.skip != 'true'
+        uses: actions/deploy-pages@v5
+
+      - name: Опубликовать в Instagram
+        id: publish
+        if: steps.render.outputs.skip != 'true' && inputs.only_youtube != true
+        env:
+          IG_TOKEN: ${{ secrets.IG_TOKEN }}
+          IG_USER_ID: ${{ secrets.IG_USER_ID }}
+          GH_PAT: ${{ secrets.GH_PAT }}
+          PAGE_URL: ${{ steps.deploy.outputs.page_url }}
+          DRY_RUN: ${{ github.event_name == 'workflow_dispatch' && inputs.dry_run }}
+        run: node scripts/publish.mjs
+
+      - name: Загрузить на YouTube Shorts
+        if: steps.render.outputs.skip != 'true'
+        continue-on-error: true
+        env:
+          YT_CLIENT_ID: ${{ secrets.YT_CLIENT_ID }}
+          YT_CLIENT_SECRET: ${{ secrets.YT_CLIENT_SECRET }}
+          YT_REFRESH_TOKEN: ${{ secrets.YT_REFRESH_TOKEN }}
+          DRY_RUN: ${{ github.event_name == 'workflow_dispatch' && inputs.dry_run }}
+        run: node scripts/youtube.mjs
+
+      - name: Запомнить, что уже опубликовано
+        if: steps.publish.outputs.posted == 'true'
+        run: |
+          git config user.name "mifoboy-bot"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          cp state.json "$RUNNER_TEMP/state.ours.json"
+          for i in 1 2 3 4 5; do
+            git fetch -q origin main
+            git reset -q --hard origin/main
+            node scripts/merge-state.mjs "$RUNNER_TEMP/state.ours.json" state.json
+            git add state.json generated
+            git commit -q -m "Опубликован ролик $(date -u +%F)" || exit 0
+            git push -q origin HEAD:main && exit 0
+            sleep $((i * 5))
+          done
+          exit 1

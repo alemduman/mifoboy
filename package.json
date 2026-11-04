@@ -1,0 +1,7 @@
+{
+  "name": "mifoboy-autopost",
+  "private": true,
+  "type": "module",
+  "description": "Автопостинг роликов «Мифобой» в Instagram Reels и YouTube Shorts через GitHub Actions",
+  "dependencies": { "playwright": "1.56.0" }
+}

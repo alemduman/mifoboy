@@ -1,0 +1,18 @@
+{
+  "autoPublish": false,
+  "startDate": "2026-11-05",
+  "timezone": "Asia/Baku",
+  "schedule": { "hours": [12, 16, 18, 20], "minute": 7, "maxDelayMinutes": 90 },
+  "handle": "@oooopslab",
+  "style": "random",
+  "showSource": true,
+  "cover": true,
+  "maxSeconds": 35,
+  "login": "unified",
+  "apiVersion": "v26.0",
+  "shareToFeed": true,
+  "extraHashtags": [],
+  "youtube": { "enabled": true, "privacy": "public", "category": "27", "fromHour": 0 },
+  "generate": { "enabled": true, "model": "claude-sonnet-5-5", "maxTries": 3, "factCheck": true },
+  "tts": { "voice": "en-US-GuyNeural", "rate": "+0%" }
+}

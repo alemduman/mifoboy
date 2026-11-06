@@ -58,12 +58,14 @@ jobs:
           package-manager-cache: false
 
       - name: Установить зависимости
+        timeout-minutes: 15
         run: |
           npm install --no-audit --no-fund
-          npx playwright install --with-deps chromium
-          command -v ffmpeg >/dev/null || (sudo apt-get update -qq && sudo apt-get install -y -qq ffmpeg)
-          pip install --quiet edge-tts || true
-          sudo apt-get install -y -qq espeak-ng || true
+          # Установка иногда зависает на стороне GitHub (apt/CDN): ограничиваем время и повторяем
+          ok=0; for i in 1 2 3; do timeout 240 npx playwright install --with-deps chromium && ok=1 && break; echo "попытка $i не удалась, повтор"; sleep 10; done; [ "$ok" = 1 ] || exit 1
+          command -v ffmpeg >/dev/null || (timeout 180 sudo apt-get update -qq && timeout 180 sudo apt-get install -y -qq ffmpeg)
+          timeout 120 pip install --quiet edge-tts || true
+          timeout 180 sudo apt-get install -y -qq espeak-ng || true
           ffmpeg -version | head -n 1
 
       - name: Сделать ролик

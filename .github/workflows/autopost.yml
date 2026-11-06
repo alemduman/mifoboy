@@ -80,11 +80,19 @@ jobs:
         with:
           path: out/site
 
+      # Pages считает выкладку с тем же хэшем коммита уже сделанной и не обновляет файлы, поэтому у каждой выкладки свой уникальный номер версии
+      - name: Уникальная версия выкладки
+        id: pv
+        if: steps.render.outputs.skip != 'true'
+        run: echo "v=$(echo "${GITHUB_SHA}-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}-$(date +%s%N)" | sha1sum | cut -c1-40)" >> "$GITHUB_OUTPUT"
+
       # GitHub Pages иногда отвечает 500. Пробуем выложить до 3 раз, чтобы слот не пропадал из-за чужого сбоя
       - name: Выложить видео по публичной ссылке (GitHub Pages)
         id: deploy
         if: steps.render.outputs.skip != 'true'
         continue-on-error: true
+        env:
+          GITHUB_SHA: ${{ steps.pv.outputs.v }}
         uses: actions/deploy-pages@v5
 
       - name: Пауза перед повтором выкладки
@@ -95,6 +103,8 @@ jobs:
         id: deploy2
         if: steps.render.outputs.skip != 'true' && steps.deploy.outcome == 'failure'
         continue-on-error: true
+        env:
+          GITHUB_SHA: ${{ steps.pv.outputs.v }}
         uses: actions/deploy-pages@v5
 
       - name: Пауза перед последним повтором
@@ -105,6 +115,8 @@ jobs:
         id: deploy3
         if: steps.render.outputs.skip != 'true' && steps.deploy.outcome == 'failure' && steps.deploy2.outcome == 'failure'
         continue-on-error: true
+        env:
+          GITHUB_SHA: ${{ steps.pv.outputs.v }}
         uses: actions/deploy-pages@v5
 
       - name: Остановить, если выложить видео не удалось

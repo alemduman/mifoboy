@@ -62,7 +62,7 @@ jobs:
         run: |
           npm install --no-audit --no-fund
           # Установка иногда зависает на стороне GitHub (apt/CDN): ограничиваем время и повторяем
-          ok=0; for i in 1 2 3; do timeout 240 npx playwright install --with-deps chromium && ok=1 && break; echo "попытка $i не удалась, повтор"; sleep 10; done; [ "$ok" = 1 ] || exit 1
+          ok=0; for i in 1 2 3; do (timeout 120 sudo apt-get update -qq || true) && timeout 240 npx playwright install --with-deps chromium && ok=1 && break; echo "попытка $i не удалась, повтор"; sleep 10; done; [ "$ok" = 1 ] || exit 1
           command -v ffmpeg >/dev/null || (timeout 180 sudo apt-get update -qq && timeout 180 sudo apt-get install -y -qq ffmpeg)
           timeout 120 pip install --quiet edge-tts || true
           timeout 180 sudo apt-get install -y -qq espeak-ng || true

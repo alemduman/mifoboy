@@ -164,3 +164,20 @@ jobs:
             sleep $((i * 5))
           done
           exit 1
+
+      # Pages считает выкладку с тем же хэшем коммита уже сделанной. Если запуск ничего не опубликовал (сбой, пробный прогон), меняем хэш, чтобы следующий запуск не залип на старом ролике
+      - name: Сменить хэш коммита для следующей выкладки
+        if: always() && steps.deploy.outcome != 'skipped' && steps.publish.outputs.posted != 'true'
+        continue-on-error: true
+        run: |
+          git config user.name "mifoboy-bot"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          for i in 1 2 3; do
+            git fetch -q origin main
+            git reset -q --hard origin/main
+            date -u +%s > .deploy-marker
+            git add .deploy-marker
+            git commit -q -m "Служебная метка выкладки" || exit 0
+            git push -q origin HEAD:main && exit 0
+            sleep $((i * 4))
+          done
